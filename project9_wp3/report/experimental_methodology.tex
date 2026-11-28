@@ -1,0 +1,450 @@
+% Section 5: Experimental methodology (+ Appendix B), converted from
+% 05-experimental-methodology_4pages.docx
+\documentclass[11pt]{article}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs,tabularx,array}
+\usepackage{caption}
+\usepackage{chngcntr}
+\usepackage[hidelinks]{hyperref}
+
+\captionsetup{font=small,labelfont=bf}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}X}
+\counterwithin{table}{section}
+
+\newcommand{\eps}{\varepsilon}
+\newcommand{\Fhat}{\widehat{F}_0}
+\newcommand{\dhat}{\widehat{\delta}}
+\newcommand{\Err}{\mathsf{Error}}
+
+\begin{document}
+
+\setcounter{section}{4}
+\section{Experimental methodology}\label{sec:methodology}
+
+Section~2 proves that Algorithm~1 is an $(\eps,\delta)$-approximation with
+bounded space and expected constant update time. The experiments test these
+claims on streams with a known answer, measure how much of the proven margin
+is used in practice, and compare the estimator with the baselines of
+Section~3.2. This section fixes the design and the analysis; the results
+follow in Section~6.
+
+\subsection{Objectives}\label{sec:objectives}
+
+The Project~9 brief asks for an accuracy study against $\eps$ and $\delta$, an
+assessment of how conservative the threshold is, and a comparison with
+classical estimators on synthetic and real streams. Each requirement becomes
+one experiment (Table~\ref{tab:experiments}). E1 tests all three claims of
+Theorem~1, accuracy, space and update time, on the same runs. Every run is
+also checked against the analysis: the output is exact when $F_0 < \tau$, the
+number of halvings matches the level predicted from $F_0$ and $\tau$, and the
+estimate is unbiased (Table~\ref{tab:checks}). Table~\ref{tab:proof-steps}
+states, for each experiment, the step of the proof it tests.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Experiments, the claims they test, and their status at the midterm
+checkpoint.}\label{tab:experiments}
+\begin{tabularx}{\linewidth}{@{}lLLl@{}}
+\toprule
+Exp. & Question & Claim tested & Status \\
+\midrule
+E1 & Does the estimator meet Theorem~1 in accuracy, space and update time? &
+  $\Pr[\text{error} > \eps \text{ or } \bot] \le 5\delta/8$; at most
+  $\tau = O(\eps^{-2}\log(m/\delta))$ stored items; expected amortised $O(1)$
+  time per item (Sections 2.1--2.3) & run; $m$-sweep to run \\
+E2 & How much smaller can $\tau$ be and still meet $\delta$? &
+  slack in the Chernoff and union bounds (Section~2.3) & run \\
+E3 & Which estimator is most accurate for equal memory, and which needs least
+  memory for equal error? & comparison with WP4 baselines (Section~3.2) &
+  awaits WP4 \\
+E4 & Does stream order change the error? &
+  guarantee holds for any fixed order (Section~1.1) & run (paper estimator) \\
+E5 & Do the results hold on real streams? & E1 and E3 on real data &
+  final report \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Estimators and workloads}\label{sec:estimators}
+
+The \textbf{paper estimator} follows the corrected version of the paper
+(Chakraborty, Vinodchandran and Meel, 2023), as implemented by WP2: each
+arriving item is removed from the sample and re-inserted with probability $p$;
+when the sample reaches $\tau$ elements, each is kept with probability $1/2$
+and $p$ is halved; if none is removed, the run returns $\bot$. For E2 and E4
+the threshold is scaled to $\tau_c = \max\{2, \lceil c\tau \rceil\}$; $c = 1$
+is the algorithm of the paper. An \textbf{exact hash set} gives the true $F_0$
+and is excluded from memory comparisons. The \textbf{baselines} of WP4
+(HyperLogLog, $k$-minimum values and one off-the-shelf implementation) share
+the same interface and a single seed. Memory is the logical state size:
+$8\tau_c$ bytes for the paper estimator, the register array for HyperLogLog
+and $k$ hash values for KMV. At a fixed budget of $B$ bytes the paper
+estimator uses $\tau = B/8$, which no longer corresponds to a pair
+$(\eps,\delta)$.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Workloads ($m = 100{,}000$, stream seed 0).}\label{tab:workloads}
+\begin{tabularx}{\linewidth}{@{}lLrL@{}}
+\toprule
+Stream & Construction & $F_0$ & Purpose \\
+\midrule
+S1 uniform & $m$ draws from $\{1,\dots,10^5\}$ & 63,249 & moderate repetition \\
+S2 all-distinct & random permutation of $1,\dots,m$ & 100,000 &
+  largest $F_0$, most halvings \\
+S3 Zipf & $m$ draws from $\{1,\dots,10^6\}$, $\Pr[k] \propto k^{-1.1}$ &
+  23,999 & skewed, web-like; repeats must count once \\
+S4 heavy repeats & 300 values repeated & 300 &
+  $F_0 < \tau$: output must be exact (unit tests) \\
+S5 reordered & S3 shuffled, sorted, in bursts, new items last & 23,999 &
+  favourable and unfavourable orders (E4) \\
+R1, R2 & two public logs & --- & real data (E5, final report) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+We generate the streams ourselves with NumPy from a fixed seed, so each stream
+and its exact $F_0$ are known and identical on every machine. Each stream is
+fixed before any algorithm run, which is the setting of Theorem~1; an adaptive
+adversary that sees the coin flips is not tested. Construction details are in
+Table~\ref{tab:streams}.
+
+\subsection{Parameters and runs}\label{sec:parameters}
+
+The estimator only approximates when $F_0 \gg \tau$. For $m = 10^5$,
+$\eps = 0.05$ would give $\tau > 110{,}000$, above every $F_0$, so we use
+$\eps \in \{0.2, 0.3, 0.5\}$ and $\delta \in \{0.01, 0.1\}$, giving $\tau$
+between 1,101 and 7,877 (6,880 for $\eps = 0.2, \delta = 0.1$) and two to
+seven halvings. For the space and time claims, E1 also runs S2 at
+$m \in \{10^4, 10^5, 10^6\}$ with $\eps = 0.2$, $\delta = 0.1$ and 200 seeds
+each: $\tau$ then grows only with $\log m$ while $F_0$ grows with $m$. E2
+halves $c$ from 1 to $1/256$, enough to locate where the failure rate crosses
+$\delta$. E4 uses $c = 1$ and $c = 1/16$, because at $c = 1$ errors of about
+1\% are too small to reveal an order effect. E3 compares the estimators at
+equal memory budgets and at equal target errors, fixing one side of the
+accuracy--memory trade-off at a time. Each configuration runs with 2,000
+algorithm seeds: with no failures the 95\% upper bound on the failure
+probability is about $3.8/n = 0.0019$, below both values of $\delta$.
+Table~\ref{tab:setup} summarises the setup; the thresholds are listed in
+Tables~\ref{tab:tau} and~\ref{tab:tauc}, and the 53 configurations (106,000
+runs) in Table~\ref{tab:configs}.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Summary of the setup and the reason for each choice.}\label{tab:setup}
+\begin{tabularx}{\linewidth}{@{}lLL@{}}
+\toprule
+Choice & Setting & Why \\
+\midrule
+Streams & S1--S3, $m = 10^5$ (S4 in tests, S5 for E4) &
+  $F_0 \gg \tau$; runs take minutes \\
+$\eps, \delta$ & $\{0.2, 0.3, 0.5\} \times \{0.01, 0.1\}$ &
+  $\tau$ below every $F_0$ \\
+Seeds & stream 0; algorithm 0--1,999 &
+  Theorem~1 is over the coins for a fixed stream \\
+Space, time & largest sample and time per item in every run;
+  $m \in \{10^4, 10^5, 10^6\}$ on S2 & $\tau$ grows with $\log m$, $F_0$ with $m$ \\
+Runs & 2,000 per configuration (E1: 36,000; E2: 54,000; E4: 16,000) &
+  no failures gives $\delta^+ = 0.0019 < \delta$ \\
+Failure & $\bot$ or relative error $> \eps$ & the event bounded by Theorem~1 \\
+E2 & $c = 1, 1/2, \dots, 1/256$ at $\eps = 0.2, \delta = 0.1$ &
+  locates where failures cross $\delta$ \\
+E3 & equal memory; equal target error & one side of the trade-off fixed \\
+E4 & $c = 1$ and $c = 1/16$ &
+  at $c = 1$ errors are too small to show order effects \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Randomness and reproducibility}\label{sec:randomness}
+
+The stream seed (fixed at 0) determines the data; the algorithm seed
+determines the coin flips. Because only the algorithm seed varies, the spread
+over 2,000 runs measures the algorithm's own randomness, which is exactly the
+probability space of Theorem~1. Each run draws all random choices from
+\texttt{random.Random(seed)}: a choice with probability $q$ succeeds if a
+uniform $u \in [0,1)$ satisfies $u < q$. The sample is a Python
+\texttt{dict}, so halvings do not depend on Python's randomised hashing, and a
+run is a deterministic function of its configuration and seed. Every run is
+appended as one row to a CSV file and never dropped, including runs that
+return $\bot$; all tables and figures are generated from these files.
+Implementation details are in Table~\ref{tab:impl}.
+
+\subsection{Metrics and analysis}\label{sec:metrics}
+
+For an output $\Fhat$ we record the relative error $|\Fhat - F_0|/F_0$, the
+signed error (to detect bias), the largest sample size, the number of
+halvings, the logical memory and the time per item. A run \emph{fails} if it
+returns $\bot$ or its relative error exceeds $\eps$. The failure rate
+$\dhat = k/n$ is reported with the upper end $\delta^+$ of its 95\% Wilson
+interval, which remains meaningful when $k = 0$; a configuration is consistent
+with the guarantee when $\delta^+ \le \delta$. Table~\ref{tab:metrics} defines
+every metric and gives the Wilson bound.
+
+\textbf{E1} reports, for accuracy, the mean, 95th-percentile and maximum error
+relative to $\eps$, with histograms of the signed error. For space, it checks
+that the largest sample never exceeds $\tau_c$, compares it with the $F_0$
+items of the exact counter, and plots it against $\eps$, $\delta$ and $m$ next
+to the predicted $\eps^{-2}\log(m/\delta)$ shape; space is counted in stored
+64-bit identifiers, so the $\log$ of the universe size in the bit bound is a
+constant. For time, it reports the median time per item against $\tau_c$
+(using the E2 runs) and against $m$, and the amortised halving work
+$h\tau_c/m$ coin flips per item, both of which should stay flat.
+\textbf{E2} reports the conservatism factor $1/c^*$, where $c^*$ is the
+smallest scale with $\delta^+ \le \delta$ on every stream. To locate the
+slack, each run is classified by the events of Section~2.3 ($\bot$; too many
+halvings, read from the recorded halvings; an error beyond $\eps$ otherwise),
+and at $c = 1$ the frequency of each event over all runs is compared with its
+bound (Table~\ref{tab:events}). The measured spread is also compared with the
+binomial approximation $\sqrt{(1-p)/(pF_0)}$, which explains the numbers but
+does not replace the proof. \textbf{E4} compares the error distributions of
+the four orders; for the hash-based baselines the estimates must be identical,
+which checks their implementation. \textbf{E3} plots error against memory and
+reports the memory each estimator needs for a target error; update times are
+compared only between implementations in the same language.
+
+\subsection{Limitations}\label{sec:limitations}
+
+The estimator is given the true stream length $m$, which many real streams do
+not announce. Each workload is a single stream, so the guarantee is confirmed
+on these streams rather than on all streams; the final version repeats E1 on
+several stream seeds and at $m = 10^6$. The conservatism factor is measured
+only at $\eps = 0.2, \delta = 0.1$. With 2,000 runs, failure probabilities
+below about 0.002 cannot be distinguished from zero.
+
+\subsection{Environment}\label{sec:environment}
+
+The experiments ran with Python~3.13 on 2 CPU cores [TODO: machine model, CPU,
+RAM, OS] using NumPy, pandas and Matplotlib; E1, E2 and E4 took about 12
+minutes. The midterm runs used the WP3 pipeline at commit \texttt{d8722af},
+whose estimator matches the shared WP2 implementation apart from input
+validation. Configurations are frozen in \texttt{experiments/configs.py}, and
+\texttt{make setup}, \texttt{make test}, \texttt{make experiments} and
+\texttt{make analyze} reproduce all results from a clean checkout [TODO:
+release tag].
+
+% ---------------------------------------------------------------------------
+\clearpage
+\appendix
+\setcounter{section}{1}
+\section{Experimental details}\label{app:experimental-details}
+
+\begin{table}[htbp]
+\centering\small
+\caption{The statement of the proof that each experiment tests.}\label{tab:proof-steps}
+\begin{tabularx}{\linewidth}{@{}p{2.1cm}LL@{}}
+\toprule
+Exp. & Statement tested & What is checked \\
+\midrule
+E1 accuracy & $\Pr[\Err] \le 5\delta/8 < \delta$, where $\Err$ is returning
+  $\bot$ or an estimate outside $[(1-\eps)F_0, (1+\eps)F_0]$ (Section~2.3) &
+  the failure rate stays below $\delta$ for every stream and $(\eps,\delta)$;
+  how much of $\eps$ is used \\
+E1 space & the sample never holds more than
+  $\tau = \lceil 12\eps^{-2}\log_2(8m/\delta) \rceil$ items (Section~2.1) &
+  the bound holds in every run; the space does not grow with $F_0$; it scales
+  as $\eps^{-2}$, $\log(1/\delta)$ and $\log m$ \\
+E1 time & the expected amortised update time is $O(1)$ (Section~2.2) &
+  the time per item and the halving work per item do not grow with $\tau_c$
+  or $m$ \\
+E2 & $\tau$ is set so that three worst-case bounds hold at once, each a
+  Chernoff bound (Lemma~2) combined with a union bound over up to $m$
+  positions or $m+1$ levels, the source of $\log_2(8m/\delta)$ &
+  the smallest fraction $c$ of $\tau$ that still meets $\delta$, i.e.\ the
+  slack these steps introduce \\
+E3 & the estimator uses $O(\eps^{-2}\log(m/\delta))$ space &
+  accuracy at equal memory and memory at equal target error, against the
+  exact counter and the WP4 baselines; time per item \\
+E4 & Theorem~1 holds for every stream fixed in advance, in any order and with
+  repetitions (Section~1.1) & reordering the same items, including
+  unfavourable orders, leaves the error distribution unchanged; for
+  hash-based baselines the estimates are identical \\
+E5 & as E1 and E3 & the conclusions hold on two real log streams (final
+  report) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Construction of the synthetic streams (NumPy \texttt{default\_rng},
+stream seed 0, $m = 100{,}000$).}\label{tab:streams}
+\begin{tabularx}{\linewidth}{@{}p{2.8cm}L@{}}
+\toprule
+Stream & Details \\
+\midrule
+S1 uniform & Each draw is uniform on $\{1,\dots,10^5\}$. About $1/e$ of the
+  values are never drawn, so $F_0 \approx (1 - 1/e)\cdot 10^5 \approx 63{,}212$;
+  this stream has 63,249. \\
+S2 all-distinct & A random permutation of $1,\dots,m$, so $F_0 = m$. \\
+S3 Zipf & Draws from $\{1,\dots,10^6\}$ with $\Pr[k] \propto k^{-1.1}$; the
+  probabilities are built explicitly because NumPy's Zipf sampler has no upper
+  bound. Value 1 occurs 12,580 times; 18,943 values occur once. \\
+S4 heavy repeats & 300 values repeated to length $m$, so $F_0 = 300 < \tau$.
+  Used only in unit tests. \\
+S5 reordered & The items of S3 in four orders: \emph{random} (shuffled),
+  \emph{sorted} (ascending), \emph{bursts} (all copies of a value adjacent,
+  values in random order), \emph{new items last} (most frequent values first,
+  values occurring once at the end). $F_0$ is unchanged. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\begin{minipage}[t]{0.46\linewidth}
+\centering
+\caption{Thresholds $\tau$ from Equation~(2) for the E1 grid
+($m = 100{,}000$).}\label{tab:tau}
+\begin{tabular}{@{}lrr@{}}
+\toprule
+$\eps$ & $\delta = 0.01$ & $\delta = 0.1$ \\
+\midrule
+0.2 & 7,877 & 6,880 \\
+0.3 & 3,501 & 3,058 \\
+0.5 & 1,261 & 1,101 \\
+\bottomrule
+\end{tabular}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.46\linewidth}
+\centering
+\caption{Scaled thresholds $\tau_c$ used in E2 ($\eps = 0.2$,
+$\delta = 0.1$).}\label{tab:tauc}
+\begin{tabular}{@{}lrlr@{}}
+\toprule
+$c$ & $\tau_c$ & $c$ & $\tau_c$ \\
+\midrule
+1    & 6,880 & 1/32  & 215 \\
+1/2  & 3,440 & 1/64  & 108 \\
+1/4  & 1,720 & 1/128 & 54 \\
+1/8  & 860   & 1/256 & 27 \\
+1/16 & 430   &       &    \\
+\bottomrule
+\end{tabular}
+\end{minipage}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Experiment configurations; each runs with 2,000 algorithm
+seeds.}\label{tab:configs}
+\begin{tabularx}{\linewidth}{@{}lLrr@{}}
+\toprule
+Exp. & Parameters & Configs & Runs \\
+\midrule
+E1 & S1--S3; $\eps \in \{0.2, 0.3, 0.5\}$; $\delta \in \{0.01, 0.1\}$;
+  $c = 1$ & 18 & 36,000 \\
+E1 ($m$-sweep) & S2; $m \in \{10^4, 10^5, 10^6\}$; $\eps = 0.2$;
+  $\delta = 0.1$; 200 seeds & 3 & 600 \\
+E2 & S1--S3; $\eps = 0.2$; $\delta = 0.1$; $c \in \{2^0, \dots, 2^{-8}\}$ &
+  27 & 54,000 \\
+E4 & S5 in 4 orders; $\eps = 0.2$; $\delta = 0.1$; $c \in \{1, 1/16\}$ &
+  8 & 16,000 \\
+E3 & memory budgets and target errors fixed when the WP4 estimators are
+  integrated & --- & --- \\
+\midrule
+Total (run) & & 53 & 106,000 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Metrics recorded for each run (output $\Fhat$, true count
+$F_0$).}\label{tab:metrics}
+\begin{tabularx}{\linewidth}{@{}p{3.4cm}L@{}}
+\toprule
+Metric & Definition \\
+\midrule
+Relative error & $|\Fhat - F_0|/F_0$, the quantity bounded by Equation~(1) \\
+Signed error & $(\Fhat - F_0)/F_0$, used to detect bias \\
+Guarantee failure & the run returns $\bot$ or its relative error exceeds
+  $\eps$ \\
+Failure rate & $\dhat = k/n$ over the $n$ runs of a configuration \\
+Wilson upper bound &
+  $\displaystyle \delta^+ = \frac{\dhat + \frac{z^2}{2n}
+  + z\sqrt{\frac{\dhat(1-\dhat)}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}}$,
+  $z = 1.96$; about $3.8/n$ when $k = 0$ \\
+Stored elements, halvings & largest sample size reached (at most $\tau_c$)
+  and number of times $p$ was halved \\
+Memory & logical memory under the common model (Section~\ref{sec:estimators}) \\
+Halving work & $h\tau_c/m$, an upper bound on the coin flips per item spent
+  in halvings \\
+Update time & wall-clock time for the whole stream
+  (\texttt{time.perf\_counter\_ns}) divided by $m$; stream generation and the
+  exact count are not timed \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Failure events of Section~2.3 and how each is identified in a
+run.}\label{tab:events}
+\begin{tabularx}{\linewidth}{@{}lLr@{}}
+\toprule
+Event & Identified by & Bound ($c = 1$) \\
+\midrule
+$\mathsf{Fail}$ & the run returns $\bot$ & $\delta/8$ \\
+$\mathsf{Bad}_2$ & final $p = 2^{-h}$ below the cutoff, i.e.\ $h > \ell$ with
+  $\ell = \lfloor \log_2(4F_0/\tau) \rfloor$ & $\delta/4$ \\
+$\Err_2 \cap \neg\mathsf{Bad}_2$ & relative error $> \eps$ although
+  $h \le \ell$ & $\delta/4$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Consistency checks between each run and the analysis of Section~2;
+a violation indicates an implementation error.}\label{tab:checks}
+\begin{tabularx}{\linewidth}{@{}p{2.8cm}L@{}}
+\toprule
+Check & Expected behaviour \\
+\midrule
+Space & the largest sample size never exceeds $\tau_c$ (Section~2.1) \\
+Exactness & when $F_0 < \tau$, no halving occurs and the output equals $F_0$
+  (tested on S4) \\
+Halvings & $h$ is close to $\lceil \log_2(F_0/\tau) \rceil$ and at most
+  $\ell$; e.g.\ S2 with $\tau = 6{,}880$ gives 4 and $\ell = 5$ \\
+Unbiasedness & the mean signed error is zero within its standard error
+  (Appendix~A.1) \\
+Update time & the median time per item does not grow with $\tau_c$ or with
+  the number of halvings (Section~2.2) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\small
+\caption{Implementation and reproducibility.}\label{tab:impl}
+\begin{tabularx}{\linewidth}{@{}p{2.8cm}L@{}}
+\toprule
+Item & Detail \\
+\midrule
+Random choices & each run creates \texttt{random.Random(seed)}; a choice with
+  probability $q$ draws $u \in [0,1)$ and succeeds if $u < q$ \\
+Sample storage & a Python \texttt{dict} (insertion order), so the elements
+  removed in a halving do not depend on randomised hashing \\
+Isolation & each run builds a fresh estimator; streams are cached per worker
+  and never modified \\
+Execution & runs are distributed over the CPU cores in chunks of 25 seeds \\
+Storage & one CSV row per run (configuration, both seeds, true count,
+  estimate, error, failure flag, stored elements, halvings, threshold, memory,
+  time per item); raw files are never edited \\
+Resumption & (configuration, seed) pairs already in the file are skipped, so
+  an interrupted experiment restarts without duplicates \\
+$\bot$ runs & recorded with the failure flag set and an empty estimate; never
+  dropped \\
+Commands & \texttt{make setup} (environment), \texttt{make test} (unit tests),
+  \texttt{make experiments} (raw CSV files), \texttt{make analyze} (tables and
+  figures) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\end{document}
